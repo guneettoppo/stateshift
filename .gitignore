@@ -1,0 +1,21 @@
+# binaries
+/stateshift
+/stateshift.exe
+/stateshift-linux
+/bin/
+
+# runtime artifacts
+/.run/
+/blob/
+*.log
+
+# env / secrets
+.env
+.env.*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

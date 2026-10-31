@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StateShift — live migration control plane</title>
+<style>
+  :root{
+    --bg:#FAFAF9; --ink:#111111; --muted:#6B6B66; --line:#E3E3DE;
+    --accent:#E53E3E; --ok:#1F7A4D; --warn:#8A6D1F; --card:#FFFFFF;
+    --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+    --sans:Inter,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px 24px 64px}
+  header{display:flex;justify-content:space-between;align-items:flex-end;
+         border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:20px;gap:24px;flex-wrap:wrap}
+  h1{font-size:30px;letter-spacing:-0.03em;margin:0;font-weight:700}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:12px;margin-top:4px;max-width:56ch}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .chip{border:1px solid var(--line);background:var(--card);padding:4px 8px;
+        font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line);
+         border:1px solid var(--line);margin-bottom:22px}
+  @media (max-width:1100px){ .stats{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:640px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  .tablewrap{overflow-x:auto;border:1px solid var(--line)}
+  .tablewrap table{border:none;min-width:1000px}
+  .stat{background:var(--card);padding:14px 12px}
+  .stat .k{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .stat .v{font-family:var(--mono);font-size:22px;margin-top:6px;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:11px;color:var(--muted);letter-spacing:0}
+
+  section{margin-bottom:26px}
+  h2{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.14em;
+     color:var(--muted);margin:0 0 10px;font-weight:600}
+  .fleet{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .node{border:1px solid var(--line);background:var(--card);padding:14px}
+  .node.owner{border-left:3px solid var(--accent);padding-left:12px}
+  .node .id{font-family:var(--mono);font-size:15px;font-weight:600}
+  .node .addr{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+  .node .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:10px;
+              display:flex;justify-content:space-between}
+  .dot{display:inline-block;width:6px;height:6px;background:var(--ok);margin-right:5px}
+
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}
+  th{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;
+     color:var(--muted);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;
+     font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  td.name{font-family:var(--sans);font-weight:600;font-size:12.5px}
+  .pill{display:inline-block;padding:2px 6px;font-size:9.5px;text-transform:uppercase;
+        letter-spacing:.08em;border:1px solid var(--line);color:var(--muted)}
+  .pill.running{color:var(--ok);border-color:#BFD9CB}
+  .pill.done{color:#111;border-color:#111}
+  .pill.restoring,.pill.draining{color:var(--warn);border-color:#E3D6A6}
+  .pill.failed{color:var(--accent);border-color:#EEC3C3}
+  .phase{color:var(--accent)}
+
+  .bar{position:relative;height:3px;background:#EDEDE8;margin-top:6px}
+  .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink)}
+  .bar i.acc{background:var(--accent)}
+
+  button{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+         background:var(--card);border:1px solid var(--ink);padding:6px 10px;cursor:pointer;color:var(--ink)}
+  button:hover{background:var(--ink);color:var(--bg)}
+  button.acc{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.acc:hover{background:#C73333;border-color:#C73333}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+  label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;
+        color:var(--muted);display:block;margin-bottom:4px}
+  input,select{font-family:var(--mono);font-size:12px;padding:6px 8px;border:1px solid var(--line);
+               background:var(--card);color:var(--ink);min-width:94px}
+  footer{margin-top:36px;border-top:1px solid var(--line);padding-top:12px;
+         font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;
+         justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .empty{padding:18px;color:var(--muted);font-family:var(--mono);font-size:11px;background:var(--card);
+         border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>State<span>Shift</span></h1>
+      <div class="sub">Move a running workload between machines at a step boundary. One authoritative
+      owner at a time, enforced by an epoch fence in the control plane.</div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <section>
+    <h2>Fleet</h2>
+    <div class="fleet" id="fleet"><div class="empty">waiting for worker registration…</div></div>
+  </section>
+
+  <section>
+    <h2>Jobs</h2>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th>Job</th><th>Workload</th><th>Owner</th><th>Epoch</th><th>Seq / total</th>
+        <th>Status</th><th>Ops</th><th>Pause</th><th>Checksum</th><th>Migrate</th>
+      </tr></thead>
+      <tbody id="jobs"><tr><td colspan="10" style="color:var(--muted)">no jobs yet</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Migrations</h2>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th>#</th><th>Job</th><th>From → to</th><th>Epoch</th><th>Pause</th>
+        <th>Bytes moved</th><th>Chunks sent</th><th>Deduped</th><th>Outcome</th>
+      </tr></thead>
+      <tbody id="migs"><tr><td colspan="9" style="color:var(--muted)">no migrations recorded</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>New job</h2>
+    <form id="create">
+      <div><label>Workload</label>
+        <select id="wl"><option value="compute">compute</option><option value="agent">agent</option></select>
+      </div>
+      <div><label>Steps</label><input id="steps" type="number" value="400" min="10" max="5000"></div>
+      <div><label>Pin to node (optional)</label><input id="pin" placeholder="A / B / droplet-1"></div>
+      <button class="acc" type="submit">Start job</button>
+    </form>
+  </section>
+
+  <footer>
+    <div id="foot-left"></div>
+    <div id="foot-right"></div>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let fleet = [];
+
+function num(n){ return (n==null?0:n).toLocaleString("en-US"); }
+function pct(p){ return (Math.max(0,Math.min(1,p||0))*100).toFixed(1)+"%"; }
+function bytes(n){
+  if(!n) return "0 B";
+  if(n < 1024) return n+" B";
+  if(n < 1048576) return (n/1024).toFixed(1)+" KiB";
+  return (n/1048576).toFixed(2)+" MiB";
+}
+
+function render(s){
+  fleet = s.nodes || [];
+  const L = s.labels || {};
+  $("chips").innerHTML = [
+    ["db", L.db||"—"], ["blob", L.blob||"—"], ["llm", L.llm||"—"],
+    ["uptime", s.uptime_s+"s"]
+  ].map(([k,v]) => `<div class="chip">${k} <b>${esc(v)}</b></div>`).join("");
+
+  const t = s.totals || {};
+  const dedupe = (t.chunks_sent && t.chunks_skipped)
+      ? (t.chunks_skipped/(t.chunks_sent+t.chunks_skipped)*100).toFixed(0)+"%"
+      : "—";
+  const cards = [
+    ["jobs", num(t.jobs)],
+    ["ops committed", num(t.ops)],
+    ["state shipped", bytes(t.bytes)],
+    ["last pause", (t.last_pause_ms||0)+"<small> ms</small>"],
+    ["chunks deduped", dedupe],
+    ["migrations", num(t.migrations)]
+  ];
+  $("stats").innerHTML = cards.map(([k,v]) =>
+    `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  if(!fleet.length){
+    $("fleet").innerHTML = `<div class="empty">no worker registered — start a node with --role=node</div>`;
+  } else {
+    const owners = new Set((s.jobs||[]).filter(j => j.status==="running"||j.status==="restoring").map(j => j.owner));
+    $("fleet").innerHTML = fleet.map(n => `
+      <div class="node ${owners.has(n.id)?"owner":""}">
+        <div class="id"><span class="dot"></span>${esc(n.id)}</div>
+        <div class="addr">${esc(n.addr)}</div>
+        <div class="meta"><span>${n.jobs} job${n.jobs===1?"":"s"}</span>
+          <span>${owners.has(n.id)?"authoritative":"idle"}</span></div>
+      </div>`).join("");
+  }
+
+  const jobs = s.jobs || [];
+  if(!jobs.length){
+    $("jobs").innerHTML = `<tr><td colspan="10" style="color:var(--muted)">no jobs yet — start one below</td></tr>`;
+  } else {
+    $("jobs").innerHTML = jobs.slice().reverse().map(j => {
+      const live = (j.status==="running") && fleet.length > 1;
+      const targets = fleet.filter(n => n.id !== j.owner).map(n =>
+        `<button data-migrate="${esc(j.id)}" data-target="${esc(n.id)}">→ ${esc(n.id)}</button>`).join(" ");
+      const cls = j.status.replace(/[^a-z]/g,"");
+      return `<tr>
+        <td>${esc(j.id)}</td>
+        <td class="name">${esc(j.workload)}</td>
+        <td>${esc(j.owner)}</td>
+        <td>${j.epoch}</td>
+        <td>${j.seq}/${j.total_steps}
+          <div class="bar"><i class="${j.status==="running"?"acc":""}" style="width:${pct(j.progress)}"></i></div></td>
+        <td><span class="pill ${cls}">${esc(j.status)}</span>
+            ${j.phase?`<div class="phase" style="font-size:10px">${esc(j.phase)}</div>`:""}</td>
+        <td>${num(j.ops)}</td>
+        <td>${j.pause_ms ? j.pause_ms+" ms" : "—"}</td>
+        <td>${esc(j.checksum || j.state_hash)}</td>
+        <td>${live ? targets : `<span style="color:var(--muted)">—</span>`}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  const migs = s.migrations || [];
+  if(!migs.length){
+    $("migs").innerHTML = `<tr><td colspan="9" style="color:var(--muted)">no migrations recorded</td></tr>`;
+  } else {
+    $("migs").innerHTML = migs.map(m => `<tr>
+      <td>${m.id}</td>
+      <td>${esc(m.job_id)}</td>
+      <td>${esc(m.from)} → ${esc(m.to)}</td>
+      <td>${m.epoch_from} → ${m.epoch_to}</td>
+      <td>${m.pause_ms} ms</td>
+      <td>${bytes(m.bytes_transferred)}</td>
+      <td>${m.chunks_sent}</td>
+      <td>${m.chunks_skipped}</td>
+      <td><span class="pill ${m.outcome==="ok"?"done":"failed"}">${esc(m.outcome)}</span></td>
+    </tr>`).join("");
+  }
+
+  $("foot-left").textContent = `state reading · ${new Date(s.now).toLocaleTimeString()}`;
+  $("foot-right").textContent = "epoch fence: UPDATE jobs … WHERE epoch = $2 — exactly one winner";
+}
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-migrate]");
+  if(!b) return;
+  b.disabled = true;
+  b.textContent = "migrating…";
+  try {
+    const res = await fetch("/api/migrate", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({job_id: b.dataset.migrate, target: b.dataset.target})
+    });
+    const body = await res.json();
+    if(!res.ok) alert(body.error || "migration failed");
+  } catch(err){ alert("migration failed: " + err); }
+  b.disabled = false;
+});
+
+$("create").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    workload: $("wl").value,
+    steps: parseInt($("steps").value || "400", 10),
+    node: $("pin").value.trim()
+  };
+  const res = await fetch("/api/jobs", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)
+  });
+  const body = await res.json();
+  if(!res.ok) alert(body.error || "could not start job");
+});
+
+const es = new EventSource("/api/events");
+es.onmessage = (ev) => { try { render(JSON.parse(ev.data)); } catch(_){} };
+es.onerror = () => { /* EventSource auto-reconnects */ };
+</script>
+</body>
+</html>
