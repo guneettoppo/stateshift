@@ -12,6 +12,12 @@
 # env / secrets
 .env
 .env.*
+# TLS material for the control-plane database: public CA here today, private
+# keys eventually. Never commit either.
+/certs/
+*.crt
+*.pem
+*.key
 
 # editor / OS
 .DS_Store
