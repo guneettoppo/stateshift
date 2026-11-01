@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /* the dev overlay badge sits on top of the metrics row */
+  devIndicators: false,
   /* Next 16 blocks dev resources for hosts not listed here; without this the
      page loads but never hydrates when opened via 127.0.0.1 instead of
      localhost. */
